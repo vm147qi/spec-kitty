@@ -294,6 +294,15 @@ def _is_session_start_invocation(argv: list[str]) -> bool:
     return len(args) >= 1 and args[0] == "session-start"
 
 
+def _is_version_only_invocation(argv: list[str]) -> bool:
+    """Return True when the whole command line is just ``--version`` / ``-v``.
+
+    Only the bare flag takes the fast path; any other argument (a subcommand,
+    ``--help``, ``--json``) still goes through the fully assembled app.
+    """
+    return argv[1:] in (["--version"], ["-v"])
+
+
 def _get_app() -> typer.Typer:
     global _APP
     if _APP is None:
@@ -572,6 +581,15 @@ def main() -> None:
         sys.stdout.flush()
         sys.stderr.flush()
         raise SystemExit(completion_exit)
+
+    # ``spec-kitty --version`` prints one line, but assembling the app imports
+    # and registers every command module (~80% of startup in a cProfile run).
+    # Answer it before the command tree is built.
+    if _is_version_only_invocation(sys.argv):
+        try:
+            version_callback(True)
+        except typer.Exit as exc:
+            raise SystemExit(exc.exit_code) from None
 
     # Check for spec-kitty-events library availability (required for 2.x branch)
     # plus app assembly run inside the bytecode-heal wrapper (#4124): an
